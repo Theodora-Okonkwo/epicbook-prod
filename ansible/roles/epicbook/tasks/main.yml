@@ -1,0 +1,111 @@
+---
+- name: Clone EpicBook repository
+  become_user: ubuntu
+  git:
+    repo: "{{ app_repo }}"
+    dest: "{{ app_dest }}"
+    version: HEAD
+    force: yes
+
+- name: Install Node.js dependencies
+  become_user: ubuntu
+  shell: |
+    source ~/.nvm/nvm.sh
+    cd {{ app_dest }}
+    npm install
+  args:
+    executable: /bin/bash
+  register: npm_install
+  changed_when: "'added' in npm_install.stdout"
+
+- name: Write Sequelize config/config.json with RDS credentials
+  template:
+    src: config.json.j2
+    dest: "{{ app_dest }}/config/config.json"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0600"
+  notify: Restart app
+
+- name: Write .env file with RDS credentials
+  template:
+    src: dotenv.j2
+    dest: "{{ app_dest }}/.env"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0600"
+  notify: Restart app
+
+- name: Wait for RDS to be reachable
+  shell: |
+    for i in $(seq 1 30); do
+      mysql -h {{ db_host }} -u {{ db_user }} -p'{{ db_password }}' \
+        -e "SELECT 1;" > /dev/null 2>&1 && echo "ready" && exit 0
+      echo "Attempt $i – waiting 10s"
+      sleep 10
+    done
+    echo "RDS not reachable after 5 minutes" && exit 1
+  args:
+    executable: /bin/bash
+  register: rds_wait
+  changed_when: false
+
+- name: Create database if not exists
+  shell: |
+    mysql -h {{ db_host }} -u {{ db_user }} -p'{{ db_password }}' \
+      -e "CREATE DATABASE IF NOT EXISTS \`{{ db_name }}\`;"
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Run schema SQL
+  shell: |
+    mysql -h {{ db_host }} -u {{ db_user }} -p'{{ db_password }}' {{ db_name }} \
+      < {{ app_dest }}/db/BuyTheBook_Schema.sql
+  args:
+    executable: /bin/bash
+  ignore_errors: yes
+  changed_when: false
+
+- name: Run author seed SQL
+  shell: |
+    mysql -h {{ db_host }} -u {{ db_user }} -p'{{ db_password }}' {{ db_name }} \
+      < {{ app_dest }}/db/author_seed.sql
+  args:
+    executable: /bin/bash
+  ignore_errors: yes
+  changed_when: false
+
+- name: Run books seed SQL
+  shell: |
+    mysql -h {{ db_host }} -u {{ db_user }} -p'{{ db_password }}' {{ db_name }} \
+      < {{ app_dest }}/db/books_seed.sql
+  args:
+    executable: /bin/bash
+  ignore_errors: yes
+  changed_when: false
+
+- name: Start app with PM2 in production mode
+  become_user: ubuntu
+  shell: |
+    source ~/.nvm/nvm.sh
+    cd {{ app_dest }}
+    pm2 delete epicbook 2>/dev/null || true
+    NODE_ENV=production pm2 start server.js --name epicbook \
+      --env production \
+      -- --env production
+    pm2 save
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Generate PM2 startup script
+  become_user: ubuntu
+  shell: |
+    source ~/.nvm/nvm.sh
+    pm2 startup systemd -u ubuntu --hp /home/ubuntu --no-daemon 2>/dev/null \
+      | grep "sudo" | bash
+  args:
+    executable: /bin/bash
+  ignore_errors: yes
+  changed_when: false

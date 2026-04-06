@@ -1,0 +1,52 @@
+---
+- name: Check if NVM is already installed
+  stat:
+    path: /home/ubuntu/.nvm/nvm.sh
+  register: nvm_installed
+
+- name: Install NVM
+  become_user: ubuntu
+  shell: |
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
+  args:
+    executable: /bin/bash
+  when: not nvm_installed.stat.exists
+
+- name: Install Node.js 18 via NVM
+  become_user: ubuntu
+  shell: |
+    source ~/.nvm/nvm.sh
+    nvm install 18
+    nvm alias default 18
+  args:
+    executable: /bin/bash
+  register: node_install
+  changed_when: "'already installed' not in node_install.stdout"
+
+- name: Symlink node and npm system-wide
+  shell: |
+    NODE_BIN=$(sudo -u ubuntu bash -c 'source ~/.nvm/nvm.sh && which node')
+    NPM_BIN=$(sudo -u ubuntu bash -c 'source ~/.nvm/nvm.sh && which npm')
+    ln -sf "$NODE_BIN" /usr/local/bin/node
+    ln -sf "$NPM_BIN"  /usr/local/bin/npm
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Install PM2 globally
+  become_user: ubuntu
+  shell: |
+    source ~/.nvm/nvm.sh
+    npm list -g pm2 || npm install -g pm2
+  args:
+    executable: /bin/bash
+  register: pm2_install
+  changed_when: "'pm2' not in pm2_install.stdout"
+
+- name: Symlink PM2 system-wide
+  shell: |
+    PM2_BIN=$(sudo -u ubuntu bash -c 'source ~/.nvm/nvm.sh && which pm2')
+    ln -sf "$PM2_BIN" /usr/local/bin/pm2
+  args:
+    executable: /bin/bash
+  changed_when: false

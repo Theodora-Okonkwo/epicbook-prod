@@ -1,0 +1,8 @@
+terraform/aws/.terraform/
+terraform/aws/.terraform.lock.hcl
+terraform/aws/terraform.tfstate
+terraform/aws/terraform.tfstate.backup
+terraform/aws/terraform.tfvars
+terraform/aws/epicbook-key.pem
+ansible/inventory.ini
+ansible/group_vars/web.yml

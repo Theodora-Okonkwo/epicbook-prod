@@ -1,0 +1,9 @@
+---
+- name: Restart app
+  become_user: ubuntu
+  shell: |
+    source ~/.nvm/nvm.sh
+    cd /home/ubuntu/theepicbook
+    pm2 restart epicbook || pm2 start server.js --name epicbook
+  args:
+    executable: /bin/bash

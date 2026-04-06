@@ -1,0 +1,9 @@
+---
+- name: Restart app
+  become_user: ubuntu
+  shell: |
+    source ~/.nvm/nvm.sh
+    cd {{ app_dest }}
+    pm2 restart epicbook
+  args:
+    executable: /bin/bash
